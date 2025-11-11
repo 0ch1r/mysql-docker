@@ -1,0 +1,12 @@
+[mysqld]
+server-id=1001
+log-bin=mysql-bin
+gtid-mode=ON
+enforce-gtid-consistency=ON
+log-slave-updates=ON
+binlog-format=ROW
+report-host=mysql-2
+report-port=3306
+master-info-repository=TABLE
+relay-log-info-repository=TABLE
+read_only=ON

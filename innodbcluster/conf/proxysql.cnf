@@ -1,0 +1,88 @@
+# ProxySQL Configuration for MySQL InnoDB Cluster
+
+# Admin interface configuration
+admin_variables = {
+    admin_credentials = "admin:admin"
+    mysql_ifaces = "0.0.0.0:6032"
+}
+
+# MySQL user and query configuration
+mysql_variables = {
+    connect_timeout_server = 3000
+    poll_span = 2000
+    threads = 4
+    max_connections = 2048
+    default_schema = "information_schema"
+    stacksize = 1048576
+    have_ssl = false
+    monitor_username="monitor"
+    monitor_password="monit0r"
+    monitor_history=600000
+    monitor_connect_interval=60000
+    monitor_ping_interval=10000
+    monitor_read_only_interval=1500
+    monitor_read_only_timeout=500
+}
+
+# Define the MySQL servers in the InnoDB Cluster
+mysql_servers:
+(
+    {
+        hostname = "mysql-ic-1"
+        port = 3306
+        hostgroup_id = 1
+        max_connections = 200
+    },
+    {
+        hostname = "mysql-ic-2"
+        port = 3306
+        hostgroup_id = 1
+        max_connections = 200
+    },
+    {
+        hostname = "mysql-ic-3"
+        port = 3306
+        hostgroup_id = 1
+        max_connections = 200
+    }
+)
+
+# MySQL Query Rules (Example)
+mysql_query_rules:
+(
+    { rule_id=1, active=1, match_pattern="^SELECT.*", destination_hostgroup=2, apply=1 },
+    { rule_id=2, active=1, match_pattern="^SELECT.*FOR UPDATE", destination_hostgroup=1, apply=1 }
+)
+
+# MySQL Group Replication Hostgroups for InnoDB Cluster
+mysql_group_replication_hostgroups:
+(
+    {
+        writer_hostgroup = 1
+        backup_writer_hostgroup = 2
+        reader_hostgroup = 3
+        offline_hostgroup = 4
+        active = 1
+        max_writers = 1
+        writer_is_also_reader = 1
+    }
+)
+
+# Define the user that will connect to ProxySQL
+mysql_users:
+(
+    {
+        username = "root",
+        password = "t00r",
+        default_hostgroup = 1,
+        active = 1,
+        transaction_persistent = 1
+    },
+    {
+        username = "app_user",
+        password = "app_pass",
+        default_hostgroup = 1,
+        active = 1,
+        transaction_persistent = 1
+    }
+)

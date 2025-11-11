@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -eo pipefail
+
+CMD="$1"
+
+MYSQL_ROOT_PASSWORD=t00r
+
+usage() {
+    echo "Usage: $0 [start|cleanup|create|add|cluster] [flag]"
+    echo "  start       Starts the container/s. Accepts 'all' and specific container name."
+    echo "  cleanup     Cleans up the deployment. Removes created docker containers, volumes and network"
+    echo "  create      Create or initialize an InnoDB cluster, requires a cluster name (default: testCluster)."
+    echo "  add         Add instances to the InnoDB Cluster, requires the instance name and port number (default: 3306)."
+    echo "  cluster     Performs cluster operations like 'status' and 'rescan'."
+    echo "Examples:"
+    echo "  $0 start all"
+    echo "  $0 create myTestCluster"
+    echo "  $0 add mysql-ic-2 3306"
+}
+
+case $CMD in
+    "start")
+        OPT="${2:-all}"
+        case $OPT in
+            "all")
+                echo "Starting all instances..."
+                docker compose up -d
+                ;;
+            "*")
+                echo "Starting single instance..."
+                docker compose up -d $OPT
+                ;;
+        esac
+        ;;
+    "cleanup")
+        echo "Cleaning up containers and volumes..."
+        docker compose down -v
+        ;;
+    "create")
+        CLUSTERNAME="${2:-testCluster}"
+        echo "Creating the cluster...\n"
+        docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD -e 'dba.createCluster(\"$CLUSTERNAME\")'"
+        ;;
+    "add")
+        if [[ -z "$2" ]]; then
+            echo "ERROR: Required option instance name is missing."
+            usage
+            exit 0
+        fi
+        INSTANCE="$2"
+        PORT="${3:-3306}"
+        echo "Adding instance...\n"
+        docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD -e 'dba.getCluster().addInstance(\"root@$INSTANCE:$PORT\", {password: \"$MYSQL_ROOT_PASSWORD\", recoveryMethod: \"clone\", waitRecovery: 0})'"
+        docker compose restart $INSTANCE
+        ;;
+    "cluster")
+        OPT="${2:-status}"
+        case $OPT in
+            "status")
+                echo "Checking cluster status..."
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD -e \"print(dba.getCluster().status())\""
+                ;;
+            "rescan")
+                echo "Rescanning the cluster..."
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD -e \"dba.getCluster().rescan()\""
+                ;;
+        esac
+        ;;
+    "users")
+        OPT="${2:-proxysql}"
+        case $OPT in
+            "proxysql")
+                echo "Preparing the cluster for ProxySQL..."
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD --sql -e \"CREATE DATABASE app_db;\""
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD --sql -e \"CREATE USER app_user@'%' IDENTIFIED WITH mysql_native_password BY 'app_pass';\""
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD --sql -e \"GRANT ALL PRIVILEGES ON app_db.* TO app_user@'%';\""
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD --sql -e \"CREATE USER monitor@'%' IDENTIFIED WITH mysql_native_password BY 'monit0r';\""
+                docker exec -it mysql-ic-1 bash -c "mysqlsh root@mysql-ic-1:3306 -p$MYSQL_ROOT_PASSWORD --sql -e \"GRANT USAGE ON *.* TO monitor@'%';\""
+                ;;
+        esac
+        ;;
+    "help")
+        usage
+        ;;
+esac

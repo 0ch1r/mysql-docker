@@ -1,0 +1,10 @@
+[mysqld]
+server-id=2
+gtid-mode=ON
+enforce-gtid-consistency=ON
+log-bin=mysqld-bin
+log-slave-updates=ON
+master-info-repository=TABLE
+relay-log-info-repository=TABLE
+transaction-write-set-extraction=XXHASH64
+binlog_transaction_dependency_tracking=WRITESET

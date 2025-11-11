@@ -1,0 +1,189 @@
+networks:
+  pmm_default:
+
+services:
+
+  mailpit:
+    image: ${MAILPIT_IMAGE:-axllent/mailpit:latest}
+    container_name: mailpit
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - mailpit-data:/data
+      - ./certs:/etc/mailpit/ssl:ro
+    ports:
+      - 8025:8025
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_BIND_ADDR: 0.0.0.0:587
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH: mp_api:mp_pass
+      MP_UI_AUTH: admin:admin
+      MP_SMTP_TLS_CERT: /etc/mailpit/ssl/cert.pem
+      MP_SMTP_TLS_KEY: /etc/mailpit/ssl/key.pem
+      MP_UI_TLS_CERT: /etc/mailpit/ssl/cert.pem
+      MP_UI_TLS_KEY: /etc/mailpit/ssl/key.pem
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+    networks:
+      - pmm_default
+    
+  postgres:
+    image: ${PDPG_IMAGE:-percona/percona-distribution-postgresql:17}
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      LANG: en_US.utf8
+      PGDATA: /data/db
+    volumes:
+      - pg-data:/data/db
+    ports: 
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pmm_default
+
+  mysql:
+    image: ${PS_IMAGE:-percona/percona-server:8.0}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot-password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "3306:3306"
+    command: >
+      --performance-schema --innodb_monitor_enable=all
+      --slow_query_log --slow_query_log_file=/mysql/slowlogs/slow.log --long_query_time=0
+    networks:
+      - pmm_default
+
+  mongodb:
+    image: ${PSMDB_IMAGE:-percona/percona-server-mongodb:8.0}
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: databaseAdmin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --eval 'db.adminCommand(\"ping\")' --quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pmm_default
+
+  watchtower:
+    image: percona/watchtower
+    platform: linux/amd64
+    container_name: watchtower
+    hostname: watchtower
+    environment:
+      - WATCHTOWER_HTTP_API_UPDATE=1
+      - WATCHTOWER_HTTP_API_TOKEN=YdpNf+Oyj8lz3ACRafmcL6ycVWw=
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pmm_default
+  
+  pmm-server:
+    image: ${PMMSERVER_IMAGE:-percona/pmm-server:3}
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    depends_on:
+      watchtower:
+        condition: service_healthy
+    environment:
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=mailpit:587
+      - GF_SMTP_USER=mp_api
+      - GF_SMTP_PASSWORD=mp_pass
+      - GF_SMTP_SKIP_VERIFY=true
+      - GF_SMTP_FROM_ADDRESS=pmm@example.com
+      - GF_SMTP_FROM_NAME=Percona Alerts
+      - GF_LOG_LEVEL=debug
+      - GF_SMTP_DEBUG=true
+      - PMM_WATCHTOWER_HOST=watchtower
+      - PMM_WATCHTOWER_TOKEN=YdpNf+Oyj8lz3ACRafmcL6ycVWw=
+    ports:
+      - 8080:80
+      - "443:8443"
+    volumes:
+      - pmm-data:/srv
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -f -L https://pmm-server:8443 > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pmm_default
+
+  pmm-client:
+    image: ${PMMCLIENT_IMAGE:-percona/pmm-client:3}
+    container_name: pmm-client
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server:8443
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: >
+        pmm-admin status --wait=10s &&
+        pmm-admin add mysql --query-source=perfschema --username=root --password=password --host=mysql --port=3306
+        && pmm-admin add postgresql --username=postgres --password=password --host=postgres --port=5432 --query-source=pgstatmonitor
+        && pmm-admin add mongodb --username=databaseAdmin --password=password --host=mongodb --port=27017 --query-source=profiler
+    networks:
+      - pmm_default
+
+  # SSL Certificate Generator Service
+  cert-generator:
+    image: alpine:latest
+    container_name: percona-cert-generator
+    volumes:
+      - ./certs:/certs
+    command: |
+      sh -c "
+        if [ ! -f /certs/key.pem ]; then
+          echo '🔐 Generating SSL certificates...'
+          apk add --no-cache openssl
+          cd /certs
+
+          # Generate TLS certificates
+          openssl req -x509 -newkey rsa:4096 -nodes -keyout key.pem -out cert.pem -sha256 -days 3650 -addext 'subjectAltName=DNS:localhost,DNS:mailpit' -subj '/C=US/ST=Production/L=Production/O=Mailpit Server/OU=Support/CN=mailpit'
+      
+          echo '✅ SSL certificates generated successfully!'
+        else
+          echo '✅ SSL certificates already exist, skipping generation.'
+        fi
+      "
+    restart: no
+
+volumes:
+  pmm-data:
+  mongo-data:
+  pg-data:
+  mysql-data:
+  mailpit-data:

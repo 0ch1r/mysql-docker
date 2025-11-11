@@ -1,0 +1,206 @@
+services:
+  proxysql:
+    image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
+    container_name: proxysql
+    hostname: proxysql
+    ports:
+      - 6033:6033
+      - 6032:6032
+    volumes:
+      - ./conf/proxysql/proxysql.cnf:/etc/proxysql.cnf
+      - ./scripts:/scripts
+    networks:
+      - proxy_network
+    depends_on:
+      mysql1:
+        condition: service_healthy
+      mysql2:
+        condition: service_healthy
+      mysql3:
+        condition: service_healthy
+      # mysql-init-container:
+      #   condition: service_completed_successfully
+
+  mysql1:
+    image: ${IMAGE_NAME:-percona/percona-server:8.0}
+    platform: linux/amd64
+    container_name: mysql1
+    hostname: mysql1
+    volumes:
+      - ./conf/mysql/mysqld1.cnf:/etc/my.cnf
+      - ./scripts:/scripts
+    networks:
+      - proxy_network
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql2:
+    image: ${IMAGE_NAME:-percona/percona-server:8.0}
+    platform: linux/amd64
+    container_name: mysql2
+    hostname: mysql2
+    volumes:
+      - ./conf/mysql/mysqld2.cnf:/etc/my.cnf
+      - ./scripts:/scripts
+    networks:
+      - proxy_network
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql3:
+    image: ${IMAGE_NAME:-percona/percona-server:8.0}
+    platform: linux/amd64
+    container_name: mysql3
+    hostname: mysql3
+    volumes:
+      - ./conf/mysql/mysqld3.cnf:/etc/my.cnf
+      - ./scripts:/scripts
+    networks:
+      - proxy_network
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-init-container:
+    image: ${IMAGE_NAME:-percona/percona-server:8.0}
+    platform: linux/amd64
+    container_name: mysqlclient
+    hostname: mysqlclient
+    volumes:
+      - ./scripts:/scripts:ro
+    networks:
+      - proxy_network
+    depends_on:
+      mysql1:
+        condition: service_healthy
+      mysql2:
+        condition: service_healthy
+      mysql3:
+        condition: service_healthy
+    command: |
+      bash -c "
+        echo 'Running setup.sh primary...'
+        ./scripts/mysql-primary.sh mysql1
+        echo 'Running setup.sh replicas...'
+        ./scripts/mysql-replicas.sh mysql2
+        ./scripts/mysql-replicas.sh mysql3
+      "
+
+  watchtower:
+    image: percona/watchtower
+    platform: linux/amd64
+    container_name: watchtower
+    hostname: watchtower
+    environment:
+      - WATCHTOWER_HTTP_API_UPDATE=1
+      - WATCHTOWER_HTTP_API_TOKEN=YdpNf+Oyj8lz3ACRafmcL6ycVWw=
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - proxy_network
+
+  pmm-server:
+    image: ${PMMSERVER_IMAGE:-percona/pmm-server:2.43.2}
+    platform: "linux/amd64"
+    container_name: pmm-server
+    restart: always
+    depends_on:
+      watchtower:
+        condition: service_healthy
+    environment:
+      - PMM_WATCHTOWER_HOST=watchtower
+      - PMM_WATCHTOWER_TOKEN=YdpNf+Oyj8lz3ACRafmcL6ycVWw=
+    ports:
+      - 8080:80
+      - "443:443"
+    volumes:
+      - ./pmm-data:/srv
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -k -f -L https://pmm-server:443 > /dev/null 2>&1 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - proxy_network
+
+  pmm-client:
+    image: ${PMMCLIENT_IMAGE:-percona/pmm-client:2.43.2}
+    container_name: pmm-client
+    networks:
+      - proxy_network
+    depends_on:
+      pmm-server:
+        condition: service_healthy
+      mysql1:
+        condition: service_healthy
+      mysql2:
+        condition: service_healthy
+      mysql3:
+        condition: service_healthy
+    environment:
+      PMM_AGENT_SERVER_ADDRESS: pmm-server:443
+      PMM_AGENT_SERVER_USERNAME: admin
+      PMM_AGENT_SERVER_PASSWORD: admin
+      PMM_AGENT_SERVER_INSECURE_TLS: 1
+      PMM_AGENT_CONFIG_FILE: config/pmm-agent.yaml
+      PMM_AGENT_SETUP: 1
+      PMM_AGENT_SETUP_FORCE: 1
+      PMM_AGENT_PRERUN_SCRIPT: >
+        pmm-admin status --wait=10s
+        && pmm-admin list
+        && pmm-admin add mysql --query-source=perfschema --username=root --password=t00r --service-name=mysql1 --host=mysql1 --port=3306
+        && pmm-admin add mysql --query-source=perfschema --username=root --password=t00r --service-name=mysql2 --host=mysql2 --port=3306
+        && pmm-admin add mysql --query-source=perfschema --username=root --password=t00r --service-name=mysql3 --host=mysql3 --port=3306
+        && pmm-admin list
+        && pmm-admin add proxysql --username=rstats --password=rstats --host=proxysql --port=6032
+
+networks:
+  proxy_network:

@@ -1,0 +1,201 @@
+networks:
+  orchestrator-default:
+
+volumes:
+  orchestrator-backend:
+  orchestrator-raft1-data:
+  orchestrator-raft2-data:
+  orchestrator-raft3-data:
+  mysql1-data:
+  mysql2-data:
+  mysql3-data:
+
+services:
+
+  orchestrator-backend:
+    image: percona/percona-server:8.0
+    container_name: orchestrator-backend
+    hostname: orchestrator-backend
+    restart: unless-stopped
+    platform: linux/amd64
+    volumes:
+      - orchestrator-backend:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=t00r
+      - MYSQL_DATABASE=orchestrator
+      - MYSQL_USER=orchestrator
+      - MYSQL_PASSWORD=SuperSecretPass123!
+    networks:
+      - orchestrator-default
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - orchestrator-mysql-back
+
+  orchestrator:
+    image: ${ORCHESTRATOR_IMAGE:-percona/percona-orchestrator:latest}
+    platform: linux/amd64
+    restart: unless-stopped
+    container_name: orchestrator
+    hostname: orchestrator
+    volumes:
+      - ./conf/orchestrator.conf.mysql.json:/etc/orchestrator/orchestrator.conf.json
+    ports:
+      - 3000:3000
+    networks:
+      - orchestrator-default
+    depends_on:
+      orchestrator-backend:
+        condition: service_healthy
+    profiles:
+      - orchestrator-mysql-back
+
+  orchestrator-1:
+    image: ${ORCHESTRATOR_IMAGE:-percona/percona-orchestrator:latest}
+    platform: linux/amd64
+    restart: unless-stopped
+    container_name: orchestrator-1
+    hostname: orchestrator-1
+    volumes:
+      - ./conf/orchestrator.conf.sqlite3.json.1:/etc/orchestrator/orchestrator.conf.json
+      - orchestrator-raft1-data:/var/lib/orchestrator:rw
+    ports:
+      - 3001:3000
+    networks:
+      - orchestrator-default
+    profiles:
+      - orchestrator-raft
+
+  orchestrator-2:
+    image: ${ORCHESTRATOR_IMAGE:-percona/percona-orchestrator:latest}
+    platform: linux/amd64
+    restart: unless-stopped
+    container_name: orchestrator-2
+    hostname: orchestrator-2
+    volumes:
+      - ./conf/orchestrator.conf.sqlite3.json.2:/etc/orchestrator/orchestrator.conf.json
+      - orchestrator-raft1-data:/var/lib/orchestrator:rw
+    ports:
+      - 3002:3000
+    networks:
+      - orchestrator-default
+    profiles:
+      - orchestrator-raft
+  
+  orchestrator-3:
+    image: ${ORCHESTRATOR_IMAGE:-percona/percona-orchestrator:latest}
+    platform: linux/amd64
+    restart: unless-stopped
+    container_name: orchestrator-3
+    hostname: orchestrator-3
+    volumes:
+      - ./conf/orchestrator.conf.sqlite3.json.3:/etc/orchestrator/orchestrator.conf.json
+      - orchestrator-raft1-data:/var/lib/orchestrator:rw
+    ports:
+      - 3003:3000
+    networks:
+      - orchestrator-default
+    profiles:
+      - orchestrator-raft
+  
+  mysql-1:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.0}
+    container_name: mysql-1
+    hostname: mysql-1
+    restart: unless-stopped
+    platform: linux/amd64
+    volumes:
+      - mysql1-data:/var/lib/mysql/
+      - ./conf/mysqld1.cnf:/etc/my.cnf:ro
+      - ./scripts/:/scripts:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=t00r
+    networks:
+      - orchestrator-default
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mysql-dbs
+
+  mysql-2:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.0}
+    container_name: mysql-2
+    hostname: mysql-2
+    restart: unless-stopped
+    platform: linux/amd64
+    volumes:
+      - mysql2-data:/var/lib/mysql/
+      - ./conf/mysqld2.cnf:/etc/my.cnf:ro
+      - ./scripts/:/scripts:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=t00r
+    networks:
+      - orchestrator-default
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mysql-dbs
+  
+  mysql-3:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.0}
+    container_name: mysql-3
+    hostname: mysql-3
+    restart: unless-stopped
+    platform: linux/amd64
+    volumes:
+      - mysql3-data:/var/lib/mysql/
+      - ./conf/mysqld3.cnf:/etc/my.cnf:ro
+      - ./scripts/:/scripts:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=t00r
+    networks:
+      - orchestrator-default
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mysql-dbs
+
+  mysql-init:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.0}
+    container_name: mysql-init
+    hostname: mysql-init
+    platform: linux/amd64
+    volumes:
+      - ./scripts/:/scripts:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=t00r
+    networks:
+      - orchestrator-default
+    depends_on:
+      mysql-1:
+        condition: service_healthy
+      mysql-2:
+        condition: service_healthy
+      mysql-3:
+        condition: service_healthy
+    command: |
+      bash -c "
+        echo 'Running setup.sh primary...'
+        ./scripts/setup.sh primary
+        echo 'Running setup.sh replicas...'
+        ./scripts/setup.sh replicas
+      "
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - mysql-dbs

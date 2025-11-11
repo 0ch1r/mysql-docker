@@ -1,0 +1,7 @@
+[mysqld]
+server-id=3000
+gtid-mode=ON
+enforce-gtid-consistency=ON
+binlog-format=ROW
+log-bin=mysqld-bin
+read_only=1

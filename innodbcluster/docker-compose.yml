@@ -1,0 +1,76 @@
+networks:
+  cluster-default:
+
+volumes:
+  mysql-ic-1-data:
+  mysql-ic-2-data:
+  mysql-ic-3-data:
+  proxysql-data:
+
+x-default-service: &default-service
+  image: ${MYSQL_IMAGE:-percona/percona-server:8.0}
+  restart: on-failure
+  networks:
+    - cluster-default
+  env_file:
+    - ./env/mysql.env
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "mysqladmin",
+        "ping",
+        "-h",
+        "localhost",
+        "-u",
+        "root",
+        "-p$$MYSQL_ROOT_PASSWORD",
+      ]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+services:
+  mysql-ic-1:
+    <<: *default-service
+    container_name: mysql-ic-1
+    hostname: mysql-ic-1
+    volumes:
+      - ./conf/mysql-ic-1.cnf:/etc/my.cnf
+      - mysql-ic-1-data:/var/lib/mysql
+
+  mysql-ic-2:
+    <<: *default-service
+    container_name: mysql-ic-2
+    hostname: mysql-ic-2
+    volumes:
+      - ./conf/mysql-ic-2.cnf:/etc/my.cnf
+      - mysql-ic-2-data:/var/lib/mysql
+
+  mysql-ic-3:
+    <<: *default-service
+    container_name: mysql-ic-3
+    hostname: mysql-ic-3
+    volumes:
+      - ./conf/mysql-ic-3.cnf:/etc/my.cnf
+      - mysql-ic-3-data:/var/lib/mysql
+
+  proxysql:
+    image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
+    container_name: proxysql
+    hostname: proxysql
+    profiles:
+      - proxysql
+    ports:
+      - "6032:6032"
+      - "6033:6033"
+    volumes:
+      - ./conf/proxysql.cnf:/etc/proxysql.cnf
+      - proxysql-data:/var/lib/proxysql
+    networks:
+      - cluster-default
+    depends_on:
+      - mysql-ic-1
+      - mysql-ic-2
+      - mysql-ic-3
+    restart: on-failure

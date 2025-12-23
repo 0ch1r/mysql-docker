@@ -1,8 +1,9 @@
 services:
-  dbmon01:
+  db01:
     image: ${MYSQL_IMAGE:-percona/percona-server:8.4}
-    container_name: dbmon01.example.com
-    hostname: dbmon01.example.com
+    platform: linux/amd64
+    container_name: db01.example.com
+    hostname: db01.example.com
     restart: unless-stopped
     ports:
       - "3306:3306"
@@ -35,7 +36,8 @@ services:
       --log-bin=mysql-bin
       --gtid-mode=ON
       --enforce-gtid-consistency=ON
-      --require-secure-transport=ON
+      --report-host=db01.example.com
+      --report-port=3306
     networks:
       - percona-ssl-network
     healthcheck:
@@ -55,10 +57,11 @@ services:
       interval: 30s
       start_period: 60s
 
-  dbmon02:
+  db02:
     image: ${MYSQL_IMAGE:-percona/percona-server:8.4}
-    container_name: dbmon02.example.com
-    hostname: dbmon02.example.com
+    platform: linux/amd64
+    container_name: db02.example.com
+    hostname: db02.example.com
     restart: unless-stopped
     ports:
       - "3307:3306"
@@ -91,9 +94,10 @@ services:
       --log-bin=mysql-bin
       --gtid-mode=ON
       --enforce-gtid-consistency=ON
-      --require-secure-transport=ON
       --relay-log=relay-bin
       --read-only=ON
+      --report-host=db02.example.com
+      --report-port=3306
     networks:
       - percona-ssl-network
     healthcheck:
@@ -114,7 +118,7 @@ services:
       start_period: 60s
 
     depends_on:
-      dbmon01:
+      db01:
         condition: service_healthy
 
   # SSL Certificate Generator Service
@@ -172,6 +176,7 @@ services:
   # ProxySQL container
   proxysql:
     image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
+    platform: linux/amd64
     container_name: proxysql.example.com
     hostname: proxysql.example.com
     restart: unless-stopped
@@ -185,9 +190,9 @@ services:
     networks:
       - percona-ssl-network
     depends_on:
-      dbmon01:
+      db01:
         condition: service_healthy
-      dbmon02:
+      db02:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-u", "admin", "-p", "admin"]
@@ -201,6 +206,7 @@ services:
   # MySQL Client container for testing
   mysql-client:
     image: ${IMAGE_NAME:-percona/percona-server:8.4}
+    platform: linux/amd64
     container_name: percona-client
     volumes:
       - ./certs:/etc/mysql/ssl:ro
@@ -209,22 +215,25 @@ services:
     networks:
       - percona-ssl-network
     depends_on:
-      - dbmon01
-      - dbmon02
+      - db01
+      - db02
     profiles:
       - testing
 
   # Percona Toolkit container
   percona-toolkit-client:
-    image: ${TOOLKIT_IMAGE:-percona/percona-toolkit:latest}
+    image: ${TOOLKIT_IMAGE:-percona/percona-toolkit:3.7.1}
+    platform: linux/amd64
     container_name: percona-toolkit
+    command: ["sleep", "infinity"]
     volumes:
-      - ./certs:/etc/ssl/certs:ro
+      - ./certs:/etc/mysql/ssl:ro
+      - ./client/client.conf:/etc/client/client.conf:ro
     networks:
       - percona-ssl-network
     depends_on:
-      - dbmon01
-      - dbmon02
+      - db01
+      - db02
     profiles:
       - toolkit
 

@@ -3,12 +3,12 @@
 echo "🔧 Setting up MySQL Replication with SSL..."
 
 # Wait for primary to be ready
-echo "⏳ Waiting for primary (dbmon01) to be ready..."
+echo "⏳ Waiting for primary (db01) to be ready..."
 sleep 10
 
 # Reset binary logs on primary to start fresh
 echo "🔄 Resetting binary logs on primary..."
-docker exec dbmon01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
+docker exec db01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
   --ssl-ca=/etc/mysql/ssl/ca.pem \
   --ssl-cert=/etc/mysql/ssl/client-cert.pem \
   --ssl-key=/etc/mysql/ssl/client-key.pem \
@@ -16,7 +16,7 @@ docker exec dbmon01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRoo
 
 # Create replication user on primary
 echo "👤 Creating replication user on primary..."
-docker exec dbmon01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
+docker exec db01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
   --ssl-ca=/etc/mysql/ssl/ca.pem \
   --ssl-cert=/etc/mysql/ssl/client-cert.pem \
   --ssl-key=/etc/mysql/ssl/client-key.pem \
@@ -26,7 +26,7 @@ docker exec dbmon01.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRoo
 
 # Create monitor user for ProxySQL on both servers
 echo "👤 Creating monitor user for ProxySQL..."
-for host in dbmon01.example.com dbmon02.example.com; do
+for host in db01.example.com db02.example.com; do
   docker exec $host mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
     --ssl-ca=/etc/mysql/ssl/ca.pem \
     --ssl-cert=/etc/mysql/ssl/client-cert.pem \
@@ -37,13 +37,13 @@ for host in dbmon01.example.com dbmon02.example.com; do
 done
 
 # Configure replication on replica
-echo "🔄 Configuring replication on replica (dbmon02)..."
-docker exec dbmon02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
+echo "🔄 Configuring replication on replica (db02)..."
+docker exec db02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
   --ssl-ca=/etc/mysql/ssl/ca.pem \
   --ssl-cert=/etc/mysql/ssl/client-cert.pem \
   --ssl-key=/etc/mysql/ssl/client-key.pem \
   -e "CHANGE REPLICATION SOURCE TO
-      SOURCE_HOST='dbmon01.example.com',
+      SOURCE_HOST='db01.example.com',
       SOURCE_USER='repl',
       SOURCE_PASSWORD='ReplPassword123!',
       SOURCE_PORT=3306,
@@ -58,7 +58,7 @@ docker exec dbmon02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRoo
 # Check replication status
 echo "📊 Checking replication status..."
 sleep 5
-docker exec dbmon02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
+docker exec db02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}" \
   --ssl-ca=/etc/mysql/ssl/ca.pem \
   --ssl-cert=/etc/mysql/ssl/client-cert.pem \
   --ssl-key=/etc/mysql/ssl/client-key.pem \
@@ -67,7 +67,7 @@ docker exec dbmon02.example.com mysql -uroot -p"${MYSQL_ROOT_PASSWORD:-SecureRoo
 echo "✅ Replication setup complete!"
 echo ""
 echo "📝 Access information:"
-echo "  Primary (dbmon01): localhost:3306"
-echo "  Replica (dbmon02): localhost:3307"
+echo "  Primary (db01): localhost:3306"
+echo "  Replica (db02): localhost:3307"
 echo "  ProxySQL MySQL:    localhost:6033"
 echo "  ProxySQL Admin:    localhost:6032 (admin:admin)"

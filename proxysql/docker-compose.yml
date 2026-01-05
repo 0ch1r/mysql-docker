@@ -1,13 +1,39 @@
 services:
-  proxysql:
+  proxysql1:
     image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
-    container_name: proxysql
-    hostname: proxysql
+    container_name: proxysql1
+    hostname: proxysql1
+    profiles:
+      - proxysql
     ports:
       - 6033:6033
       - 6032:6032
     volumes:
-      - ./conf/proxysql/proxysql.cnf:/etc/proxysql.cnf
+      - ./conf/proxysql/proxysql1.cnf:/etc/proxysql/proxysql.cnf
+      - ./scripts:/scripts
+    networks:
+      - proxy_network
+    depends_on:
+      mysql1:
+        condition: service_healthy
+      mysql2:
+        condition: service_healthy
+      mysql3:
+        condition: service_healthy
+      # mysql-init-container:
+      #   condition: service_completed_successfully
+
+  proxysql2:
+    image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
+    container_name: proxysql2
+    hostname: proxysql2
+    profiles:
+      - proxysql
+    ports:
+      - 6035:6033
+      - 6034:6032
+    volumes:
+      - ./conf/proxysql/proxysql2.cnf:/etc/proxysql/proxysql.cnf
       - ./scripts:/scripts
     networks:
       - proxy_network
@@ -29,6 +55,7 @@ services:
     volumes:
       - ./conf/mysql/mysqld1.cnf:/etc/my.cnf
       - ./scripts:/scripts
+      - ./bkp:/backup
     networks:
       - proxy_network
     environment:
@@ -57,6 +84,7 @@ services:
     volumes:
       - ./conf/mysql/mysqld2.cnf:/etc/my.cnf
       - ./scripts:/scripts
+      - ./bkp:/backup
     networks:
       - proxy_network
     environment:
@@ -85,6 +113,7 @@ services:
     volumes:
       - ./conf/mysql/mysqld3.cnf:/etc/my.cnf
       - ./scripts:/scripts
+      - ./bkp:/backup
     networks:
       - proxy_network
     environment:
@@ -110,6 +139,8 @@ services:
     platform: linux/amd64
     container_name: mysqlclient
     hostname: mysqlclient
+    profiles:
+      - init
     volumes:
       - ./scripts:/scripts:ro
     networks:
@@ -135,6 +166,8 @@ services:
     platform: linux/amd64
     container_name: watchtower
     hostname: watchtower
+    profiles:
+      - pmm
     environment:
       - WATCHTOWER_HTTP_API_UPDATE=1
       - WATCHTOWER_HTTP_API_TOKEN=YdpNf+Oyj8lz3ACRafmcL6ycVWw=
@@ -147,6 +180,8 @@ services:
     image: ${PMMSERVER_IMAGE:-percona/pmm-server:2.43.2}
     platform: "linux/amd64"
     container_name: pmm-server
+    profiles:
+      - pmm
     restart: always
     depends_on:
       watchtower:
@@ -174,6 +209,8 @@ services:
   pmm-client:
     image: ${PMMCLIENT_IMAGE:-percona/pmm-client:2.43.2}
     container_name: pmm-client
+    profiles:
+      - pmm
     networks:
       - proxy_network
     depends_on:

@@ -23,3 +23,4 @@ mysql -uroot -p$MYSQL_ROOT_PASSWORD -h$PRIMARY -e "GRANT ALL PRIVILEGES ON app.*
 
 echo "Creating app database..."
 mysql -uroot -p$MYSQL_ROOT_PASSWORD -h$PRIMARY -e "CREATE DATABASE app"
+

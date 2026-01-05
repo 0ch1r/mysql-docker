@@ -146,3 +146,5 @@ test-results.xml
 # Custom
 *.pem
 *.srl
+CS00*
+KB00*

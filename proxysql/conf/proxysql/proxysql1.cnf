@@ -1,0 +1,75 @@
+# Configuration
+datadir="/var/lib/proxysql"
+errorlog="/var/lib/proxysql/proxysql.log"
+
+# ProxySQL Servers
+proxysql_servers:
+(
+  { hostname="proxysql1", port=6032, weight=0, comment="proxysql1" },
+  { hostname="proxysql2", port=6032, weight=0, comment="proxysql2" }
+)
+# MySQL Servers
+mysql_servers:
+(
+    { address="mysql1" port=3306 hostgroup=10 max_connections=2000 },
+    { address="mysql2" port=3306 hostgroup=11 max_connections=2000 },
+    { address="mysql3" port=3306 hostgroup=11 max_connections=2000 }
+)
+
+# MySQL Users
+mysql_users:
+(
+    { username = "app_user", password = "app_password", default_hostgroup = 10, max_connections = 1000, default_schema = "app", active = 1, transaction_persistent = 1 },
+    { username = "superuser", password = "superpass", default_hostgroup = 10, max_connections = 1000, default_schema = "information_schema", active = 1, transaction_persistent = 1 }
+)
+
+# MySQL Query Rules (Example)
+mysql_query_rules:
+(
+    { rule_id=1, active=1, match_pattern="^SELECT.*", destination_hostgroup=11, apply=1 },
+    { rule_id=2, active=1, match_pattern="^SELECT.*FOR UPDATE", destination_hostgroup=10, apply=1 }
+)
+
+# Optional: Admin settings
+admin_variables =
+{
+    admin_credentials="admin:admin;radmin:radmin;cadmin:cadmin"
+    stats_credentials="rstats:rstats"
+    mysql_ifaces="0.0.0.0:6032"
+    cluster_username="cadmin"
+    cluster_password="cadmin"
+}
+
+# MySQL Replication Hostgroups
+mysql_replication_hostgroups:
+(
+    { writer_hostgroups=10, reader_hostgroup=11, check_type="read_only", comment=""}
+)
+
+mysql_variables=
+{
+	threads=4
+	max_connections=2048
+	default_query_delay=0
+	default_query_timeout=36000000
+	have_compress=true
+	poll_timeout=2000
+	interfaces="0.0.0.0:6033"
+	default_schema="information_schema"
+	stacksize=1048576
+	server_version="8.0.43"
+	connect_timeout_server=3000
+	monitor_username="monitor"
+	monitor_password="monit0r"
+	monitor_history=600000
+	monitor_connect_interval=60000
+	monitor_ping_interval=10000
+  monitor_ping_timeout=999
+	monitor_read_only_interval=1500
+	monitor_read_only_timeout=500
+	ping_interval_server_msec=120000
+	ping_timeout_server=500
+	commands_stats=true
+	sessions_sort=true
+	connect_retries_on_failure=10
+}

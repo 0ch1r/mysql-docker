@@ -23,24 +23,30 @@ proxysql/
 ## 🚀 Quick Start
 
 1. **Start all services:**
+
    ```bash
-   chmod +x start-services.sh
-   ./start-services.sh
+   docker compose --profile init up -d // Starts the MySQL containers and mysql-init-container
+   docker compose --profile proxysql up -d // Starts the ProxySQL instances in a clustered setup
+   docker compose --profile pmm up -d // Starts the PMM Server, PMM Client, Watchtower services
    ```
 
 2. **Check service status:**
+
    ```bash
-   docker compose ps
+   docker compose ps -a
    ```
 
 3. **Test ProxySQL connection:**
+
    ```bash
-   mysql -h 127.0.0.1 -P 6033 -u admin -padmin -e "SELECT 1"
+   docker exec -it proxysql1 bash
+   mysql -h127.0.0.1 -P6033 -uapp_user -papp_password -e "SELECT 1"
    ```
 
 4. **Connect to ProxySQL admin interface:**
    ```bash
-   mysql -h 127.0.0.1 -P 6032 -u admin -padmin
+   docker exec -it proxysql1 bash
+   mysql -h127.0.0.1 -P6032 -uadmin -padmin
    ```
 
 ## 🐳 Services Overview
@@ -64,7 +70,7 @@ proxysql/
 
 ### ProxySQL
 
-- **proxysql**: Database proxy (ports mapped)
+- **proxysql1/proxysql2**: Database proxy (ports mapped)
   - MySQL Protocol: 6033 (for application connections)
   - Admin Interface: 6032 (for ProxySQL management)
   - Default admin credentials: admin/admin
@@ -79,7 +85,6 @@ Update the `.env` file to customize your deployment:
 ```bash
 # Passwords
 MYSQL_ROOT_PASSWORD=root_password
-MYSQL_PASSWORD=password
 
 # Container versions
 PROXYSQL_IMAGE=proxysql/proxysql:latest
@@ -89,6 +94,7 @@ IMAGE_NAME=percona/percona-server:8.0
 ### MySQL Configuration
 
 The MySQL configuration files include:
+
 - Binary logging for replication
 - Server IDs setup
 - General query logging
@@ -97,6 +103,7 @@ The MySQL configuration files include:
 ### ProxySQL Configuration
 
 The ProxySQL configuration (`conf/proxysql/proxysql.cnf`) includes:
+
 - Hostgroup definitions (writers and readers)
 - Query routing rules
 - Monitor settings
@@ -118,7 +125,7 @@ ProxySQL provides several useful features:
 
 ```bash
 # Connect via ProxySQL (application port)
-mysql -h 127.0.0.1 -P 6033 -u admin -padmin
+mysql -h 127.0.0.1 -P 6033 -uapp_user -papp_password
 
 # This will route queries to the appropriate backend servers
 ```
@@ -178,7 +185,7 @@ docker compose exec mysql3 mysql -uroot -p -e "SHOW SLAVE STATUS\G"
 
 ### Modifying Server Configuration
 
-1. Edit `conf/proxysql/proxysql.cnf` for ProxySQL settings
+1. Edit `conf/proxysql/proxysql[1-2].cnf` for ProxySQL settings
 2. Edit `conf/mysql/mysqld[1-3].cnf` for MySQL settings
 3. Restart services: `docker compose restart`
 
@@ -189,16 +196,16 @@ Add custom monitoring rules to ProxySQL admin:
 ```sql
 -- Add query rules
 INSERT INTO main.mysql_query_rules (
-  rule_id, 
-  active, 
-  match_pattern, 
+  rule_id,
+  active,
+  match_pattern,
   destination_hostgroup,
   apply
 ) VALUES (
-  1, 
-  'ACTIVE', 
-  '^SELECT.*testdb', 
-  10, 
+  1,
+  'ACTIVE',
+  '^SELECT.*testdb',
+  10,
   1
 );
 
@@ -213,13 +220,10 @@ To reset and rebuild the environment:
 
 ```bash
 # Stop all services
-docker compose down
+docker compose --profile init --profile proxysql --profile pmm down
 
 # Remove volumes (注意: This will delete all data)
-docker compose down -v
-
-# Start again
-./start-services.sh
+docker compose --profile init --profile proxysql --profile pmm down -v
 ```
 
 ## 🔧 Troubleshooting
@@ -231,7 +235,7 @@ docker compose down -v
 docker compose logs
 
 # Check specific service logs
-docker compose logs proxysql
+docker compose logs proxysql1
 docker compose logs mysql1
 ```
 

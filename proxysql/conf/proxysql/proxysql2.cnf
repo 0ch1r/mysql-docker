@@ -43,7 +43,7 @@ admin_variables =
 # MySQL Replication Hostgroups
 mysql_replication_hostgroups:
 (
-    { writer_hostgroups=10, reader_hostgroup=11, check_type="read_only", comment=""}
+    { writer_hostgroup=10, reader_hostgroup=11, check_type="read_only", comment=""}
 )
 
 mysql_variables=
@@ -67,6 +67,7 @@ mysql_variables=
   monitor_ping_timeout=1000
 	monitor_read_only_interval=1500
 	monitor_read_only_timeout=500
+  monitor_writer_is_also_reader=1
 	ping_interval_server_msec=120000
 	ping_timeout_server=500
 	commands_stats=true

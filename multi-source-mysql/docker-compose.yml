@@ -1,0 +1,268 @@
+services:
+  s01:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.4}
+    platform: linux/amd64
+    container_name: s01.example.com
+    hostname: s01.example.com
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      # Database configuration
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-secure_db}
+      MYSQL_USER: ${MYSQL_USER:-secure_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SecureUserPass123!}
+      # SSL enforcement
+      MYSQL_REQUIRE_SSL: "1"
+    volumes:
+      # SSL certificates
+      - ./certs:/etc/mysql/ssl:ro
+      # MySQL configuration
+      - ./conf/mysql-primary1.cnf:/etc/my.cnf:ro
+      # Data persistence
+      - ./s01data:/var/lib/mysql
+      # Log directory
+      - ./s01logs:/var/log/mysql
+    command: >
+      --ssl-ca=/etc/mysql/ssl/ca.pem
+      --ssl-cert=/etc/mysql/ssl/server-cert.pem
+      --ssl-key=/etc/mysql/ssl/server-key.pem
+      --require-secure-transport=ON
+      --bind-address=0.0.0.0
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --server-id=101
+      --log-bin=mysql-bin
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --report-host=s01.example.com
+      --report-port=3306
+    networks:
+      - multi-source-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "--ssl-ca=/etc/mysql/ssl/ca.pem",
+          "--ssl-cert=/etc/mysql/ssl/client-cert.pem",
+          "--ssl-key=/etc/mysql/ssl/client-key.pem",
+        ]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 60s
+
+  s02:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.4}
+    platform: linux/amd64
+    container_name: s02.example.com
+    hostname: s02.example.com
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      # Database configuration
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-secure_db}
+      MYSQL_USER: ${MYSQL_USER:-secure_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SecureUserPass123!}
+      # SSL enforcement
+      MYSQL_REQUIRE_SSL: "1"
+    volumes:
+      # SSL certificates
+      - ./certs:/etc/mysql/ssl:ro
+      # MySQL configuration
+      - ./conf/mysql-primary2.cnf:/etc/my.cnf:ro
+      # Data persistence
+      - ./s02data:/var/lib/mysql
+      # Log directory
+      - ./s02logs:/var/log/mysql
+    command: >
+      --ssl-ca=/etc/mysql/ssl/ca.pem
+      --ssl-cert=/etc/mysql/ssl/server-cert.pem
+      --ssl-key=/etc/mysql/ssl/server-key.pem
+      --require-secure-transport=ON
+      --bind-address=0.0.0.0
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --server-id=102
+      --log-bin=mysql-bin
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --relay-log=relay-bin
+      --read-only=ON
+      --report-host=s02.example.com
+      --report-port=3306
+    networks:
+      - multi-source-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "--ssl-ca=/etc/mysql/ssl/ca.pem",
+          "--ssl-cert=/etc/mysql/ssl/client-cert.pem",
+          "--ssl-key=/etc/mysql/ssl/client-key.pem",
+        ]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 60s
+
+  r01:
+    image: ${MYSQL_IMAGE:-percona/percona-server:8.4}
+    platform: linux/amd64
+    container_name: r01.example.com
+    hostname: r01.example.com
+    restart: unless-stopped
+    ports:
+      - "3308:3306"
+    environment:
+      # Database configuration
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-SecureRootPass123!}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-secure_db}
+      MYSQL_USER: ${MYSQL_USER:-secure_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-SecureUserPass123!}
+      # SSL enforcement
+      MYSQL_REQUIRE_SSL: "1"
+    volumes:
+      # SSL certificates
+      - ./certs:/etc/mysql/ssl:ro
+      # MySQL configuration
+      - ./conf/mysql-replica.cnf:/etc/my.cnf:ro
+      # Data persistence
+      - ./r01data:/var/lib/mysql
+      # Log directory
+      - ./r01logs:/var/log/mysql
+    command: >
+      --ssl-ca=/etc/mysql/ssl/ca.pem
+      --ssl-cert=/etc/mysql/ssl/server-cert.pem
+      --ssl-key=/etc/mysql/ssl/server-key.pem
+      --require-secure-transport=ON
+      --bind-address=0.0.0.0
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --server-id=201
+      --log-bin=mysql-bin
+      --gtid-mode=ON
+      --enforce-gtid-consistency=ON
+      --relay-log=relay-bin
+      --read-only=ON
+      --report-host=r02.example.com
+      --report-port=3306
+    networks:
+      - multi-source-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "--ssl-ca=/etc/mysql/ssl/ca.pem",
+          "--ssl-cert=/etc/mysql/ssl/client-cert.pem",
+          "--ssl-key=/etc/mysql/ssl/client-key.pem",
+        ]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 60s
+    depends_on:
+      s01:
+        condition: service_healthy
+      s02:
+        condition: service_healthy
+
+  # SSL Certificate Generator Service
+  cert-generator:
+    image: alpine:latest
+    container_name: percona-cert-generator
+    volumes:
+      - ./certs:/certs
+    command: |
+      sh -c "
+        if [ ! -f /certs/ca.pem ]; then
+          echo '🔐 Generating SSL certificates...'
+          apk add --no-cache openssl
+          cd /certs
+
+          # Generate CA private key
+          openssl genpkey -algorithm RSA -out ca-key.pem -pkeyopt rsa_keygen_bits:4096
+
+          # Generate CA certificate
+          openssl req -new -x509 -key ca-key.pem -out ca.pem -days 3650 -subj '/C=US/ST=CA/L=San Francisco/O=Percona SSL CA/CN=Percona SSL CA'
+
+          # Generate server private key
+          openssl genpkey -algorithm RSA -out server-key.pem -pkeyopt rsa_keygen_bits:4096
+
+          # Generate server certificate request
+          openssl req -new -key server-key.pem -out server-req.pem -subj '/C=US/ST=CA/L=San Francisco/O=Percona Server/CN=percona-ssl'
+
+          # Generate server certificate
+          openssl x509 -req -in server-req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -days 3650
+
+          # Generate client private key
+          openssl genpkey -algorithm RSA -out client-key.pem -pkeyopt rsa_keygen_bits:4096
+
+          # Generate client certificate request
+          openssl req -new -key client-key.pem -out client-req.pem -subj '/C=US/ST=CA/L=San Francisco/O=Percona Client/CN=client'
+
+          # Generate client certificate
+          openssl x509 -req -in client-req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out client-cert.pem -days 3650
+
+          # Set permissions
+          chmod 600 *.pem
+          chown 999:999 *.pem
+
+          # Clean up
+          rm -f *-req.pem
+
+          echo '✅ SSL certificates generated successfully!'
+        else
+          echo '✅ SSL certificates already exist, skipping generation.'
+        fi
+      "
+    restart: "no"
+    depends_on: []
+
+  # MySQL Client container for testing
+  mysql-client:
+    image: ${IMAGE_NAME:-percona/percona-server:8.4}
+    platform: linux/amd64
+    container_name: percona-client
+    volumes:
+      - ./certs:/etc/mysql/ssl:ro
+      - ./conf/mysql-ssl.cnf:/etc/my.cnf:ro
+    command: sleep infinity
+    networks:
+      - multi-source-network
+    depends_on:
+      - s01
+      - s02
+      - r01
+    profiles:
+      - testing
+
+  # Percona Toolkit container
+  percona-toolkit-client:
+    image: ${TOOLKIT_IMAGE:-percona/percona-toolkit:3.7.1}
+    platform: linux/amd64
+    container_name: percona-toolkit
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./certs:/etc/mysql/ssl:ro
+      - ./client/client.conf:/etc/client/client.conf:ro
+    networks:
+      - multi-source-network
+
+networks:
+  multi-source-network:

@@ -38,6 +38,8 @@ services:
       --enforce-gtid-consistency=ON
       --report-host=db01.example.com
       --report-port=3306
+      --performance-schema=ON
+      --thread-handling=pool-of-threads
     networks:
       - percona-ssl-network
     healthcheck:

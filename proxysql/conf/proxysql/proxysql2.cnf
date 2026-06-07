@@ -3,11 +3,11 @@ datadir="/var/lib/proxysql"
 errorlog="/var/lib/proxysql/proxysql.log"
 
 # ProxySQL Servers
-proxysql_servers:
-(
-  { hostname="proxysql1", port=6032, weight=0, comment="proxysql1" },
-  { hostname="proxysql2", port=6032, weight=0, comment="proxysql2" }
-)
+# proxysql_servers:
+# (
+#   { hostname="proxysql1", port=6032, weight=0, comment="proxysql1" },
+#   { hostname="proxysql2", port=6032, weight=0, comment="proxysql2" }
+# )
 # MySQL Servers
 mysql_servers:
 (

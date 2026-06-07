@@ -1,4 +1,26 @@
 services:
+  k6-sql:
+    image: k6-perftests-k6-sql:latest
+    container_name: k6-sql
+    volumes:
+      - ./k6-tests:/tests:ro
+    environment:
+      MYSQL_ADMIN_DSN: root:t00r@tcp(mysql1:3306)/
+      MYSQL_TEST_DSN: root:t00r@tcp(mysql1:3306)/
+    command: ["run", "/tests/simple-mysql-insert.js"]
+    networks:
+      - proxy_network
+    profiles:
+      - k6
+
+  percona-toolkit-client:
+    image: ${TOOLKIT_IMAGE:-percona/percona-toolkit:3.7.1}
+    platform: linux/amd64
+    container_name: percona-toolkit
+    command: ["sleep", "infinity"]
+    networks:
+      - proxy_network
+
   proxysql1:
     image: ${PROXYSQL_IMAGE:-proxysql/proxysql:latest}
     container_name: proxysql1
@@ -177,7 +199,7 @@ services:
       - proxy_network
 
   pmm-server:
-    image: ${PMMSERVER_IMAGE:-percona/pmm-server:2.43.2}
+    image: ${PMMSERVER_IMAGE:-percona/pmm-server:3}
     platform: "linux/amd64"
     container_name: pmm-server
     profiles:
@@ -207,7 +229,7 @@ services:
       - proxy_network
 
   pmm-client:
-    image: ${PMMCLIENT_IMAGE:-percona/pmm-client:2.43.2}
+    image: ${PMMCLIENT_IMAGE:-percona/pmm-client:3}
     container_name: pmm-client
     profiles:
       - pmm

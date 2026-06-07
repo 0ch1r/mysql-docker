@@ -1,0 +1,189 @@
+services:
+  pxc1:
+    image: ${MYSQL_IMAGE:-percona/percona-xtradb-cluster:8.0}
+    container_name: pxc1
+    hostname: pxc1
+    networks:
+      - pxc-network
+    ports:
+      - "3306:3306"
+      - "4444:4444"
+      - "4567:4567"
+      - "4568:4568"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-t00r}
+      CLUSTER_NAME: ${PXC_CLUSTER_NAME:-pxc-cluster}
+      XTRABACKUP_PASSWORD: xtrabackuppass
+    volumes:
+      - ./conf/mysql/:/etc/percona-xtradb-cluster.conf.d:ro
+      - ./certs:/cert:ro
+      - pxc1-data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      --wsrep-new-cluster
+      --wsrep_provider_options="gcache.size=512M"
+      --wsrep_cluster_name=${PXC_CLUSTER_NAME:-pxc-cluster}
+      --wsrep_cluster_address=gcomm://pxc1,pxc2,pxc3
+      --wsrep_node_name=pxc1
+      --wsrep_node_address=pxc1:4567
+      --wsrep_sst_receive_address=pxc1:4444
+      --pxc_strict_mode=ENFORCING
+      --binlog_expire_logs_seconds=604800
+      --max_connections=1000
+      --sql-generate-invisible-primary-key=ON
+
+  pxc2:
+    image: ${MYSQL_IMAGE:-percona/percona-xtradb-cluster:8.0}
+    container_name: pxc2
+    hostname: pxc2
+    networks:
+      - pxc-network
+    ports:
+      - "3307:3306"
+      - "4445:4444"
+      - "4569:4567"
+      - "4570:4568"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-t00r}
+      CLUSTER_NAME: ${PXC_CLUSTER_NAME:-pxc-cluster}
+      CLUSTER_JOIN: pxc1
+      XTRABACKUP_PASSWORD: xtrabackuppass
+    volumes:
+      - ./conf/mysql/:/etc/percona-xtradb-cluster.conf.d:ro
+      - ./certs:/cert:ro
+      - pxc2-data:/var/lib/mysql
+    depends_on:
+      pxc1:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      --wsrep_provider_options="gcache.size=512M"
+      --wsrep_cluster_name=${PXC_CLUSTER_NAME:-pxc-cluster}
+      --wsrep_cluster_address=gcomm://pxc1,pxc2,pxc3
+      --wsrep_node_name=pxc2
+      --wsrep_node_address=pxc2:4567
+      --wsrep_sst_receive_address=pxc2:4444
+      --pxc_strict_mode=ENFORCING
+      --binlog_expire_logs_seconds=604800
+      --max_connections=1000
+      --sql-generate-invisible-primary-key=ON
+
+  pxc3:
+    image: ${MYSQL_IMAGE:-percona/percona-xtradb-cluster:8.0}
+    container_name: pxc3
+    hostname: pxc3
+    networks:
+      - pxc-network
+    ports:
+      - "3308:3306"
+      - "4446:4444"
+      - "4571:4567"
+      - "4572:4568"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-t00r}
+      CLUSTER_NAME: ${PXC_CLUSTER_NAME:-pxc-cluster}
+      CLUSTER_JOIN: pxc1
+      XTRABACKUP_PASSWORD: xtrabackuppass
+    volumes:
+      - ./conf/mysql/:/etc/percona-xtradb-cluster.conf.d:ro
+      - ./certs:/cert:ro
+      - pxc3-data:/var/lib/mysql
+    depends_on:
+      pxc1:
+        condition: service_healthy
+      pxc2:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      --wsrep_provider_options="gcache.size=512M"
+      --wsrep_cluster_name=${PXC_CLUSTER_NAME:-pxc-cluster}
+      --wsrep_cluster_address=gcomm://pxc1,pxc2,pxc3
+      --wsrep_node_name=pxc3
+      --wsrep_node_address=pxc3:4567
+      --wsrep_sst_receive_address=pxc3:4444
+      --pxc_strict_mode=ENFORCING
+      --binlog_expire_logs_seconds=604800
+      --max_connections=1000
+      --sql-generate-invisible-primary-key=ON
+
+  # ProxySQL container
+  proxysql:
+    image: ${PROXYSQL_IMAGE:-percona/proxysql3:latest}
+    platform: linux/amd64
+    container_name: proxysql
+    hostname: proxysql
+    restart: unless-stopped
+    ports:
+      - "6033:6033" # ProxySQL MySQL interface
+      - "6032:6032" # ProxySQL Admin interface
+    volumes:
+      - ./conf/proxysql/proxysql.cnf:/etc/proxysql/proxysql.cnf
+      - proxysql-data:/var/lib/proxysql
+    networks:
+      - pxc-network
+
+  pxc-init-container:
+    image: ${IMAGE_NAME:-percona/percona-server:8.4}
+    platform: linux/amd64
+    container_name: mysqlclient
+    hostname: mysqlclient
+    volumes:
+      - ./scripts:/scripts:ro
+    networks:
+      - pxc-network
+    command: |
+      bash -c "
+        echo 'Creating users in pxc1...'
+        ./scripts/create-users.sh
+      "
+
+networks:
+  pxc-network:
+
+volumes:
+  pxc1-data:
+  pxc2-data:
+  pxc3-data:
+  proxysql-data:
